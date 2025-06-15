@@ -1,5 +1,5 @@
 import './styles/graph.css'
-import InputBox from './components/InputBox.jsx'
+import InputBox from './components/InputBox'
 import GraphCanvas from './components/GraphCanvas'
 import { useState } from 'react'
 
