@@ -1,6 +1,6 @@
 .link {
-  stroke: #999;
-  stroke-width: 2px;
+  stroke: #000;
+  stroke-width: 1px;
 }
 
 circle {
@@ -10,4 +10,30 @@ circle {
 
 circle:hover {
   fill: #ff7f0e;
+}
+
+.link.initial {
+  stroke-width: 1;
+  stroke-dasharray: none;
+  stroke: '#fff';
+}
+
+.tooltip {
+  transition: opacity 0.2s ease;
+  z-index: 1000;
+}
+
+.CodeMirror-gutters {
+  background: #f5f5f5;
+}
+.CodeMirror-linenumber {
+  color: #888;
+}
+.cm-s-dracula .CodeMirror-code > div:nth-child(2n) {
+  background: rgba(255,255,255,0.03);
+}
+
+div[style*="resize"] {
+  resize: horizontal;
+  overflow: auto;
 }

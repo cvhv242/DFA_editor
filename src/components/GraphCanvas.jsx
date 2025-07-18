@@ -3,113 +3,283 @@ import * as d3 from 'd3'
 
 export default function GraphCanvas({ graphData }) {
   const svgRef = useRef()
+  useEffect(() => {
+    const tooltip = d3.select('body')
+      .append('div')
+      .attr('class', 'tooltip')
+      .style('position', 'absolute')
+      .style('padding', '6px 8px')
+      .style('background', 'black')
+      .style('color', 'white')
+      .style('border-radius', '4px')
+      .style('font-size', '12px')
+      .style('pointer-events', 'none')
+      .style('opacity', 0)
+    return () => tooltip.remove()
+  }, [])
+
 
   useEffect(() => {
     const svg = d3.select(svgRef.current)
+
+    if (!graphData || graphData.nodes.length === 0 || graphData.links.length === 0) {
+      svg.selectAll('*').remove()
+      return
+    }
     svg.selectAll('*').remove()
 
-    const width = svgRef.current.clientWidth
-    const height = svgRef.current.clientHeight
+    const width = svgRef.current?.clientWidth || 800
+    const height = svgRef.current?.clientHeight || 500
 
-    const { nodes, links } = graphData
+    const nodes = graphData.nodes
+    const links = graphData.links
 
-    svg.append('defs')
-      .append('marker')
+    const r = 20
+    const loopR = r-5
+    const arrowlen = 10
+
+    // ✅ Resolve source/target references from node IDs
+    links.forEach(link => {
+      if (typeof link.source === 'string') {
+        link.source = nodes.find(n => n.id === link.source)
+      }
+      if (typeof link.target === 'string') {
+        link.target = nodes.find(n => n.id === link.target)
+      }
+    })
+
+    const visibleNodes = nodes.filter(n => !n.invisible)
+
+    const initialNode = visibleNodes.find(n => n.isInitial)
+    if (initialNode) {
+      initialNode.fx = 100   // x-position fixed to left side
+      initialNode.fy = height / 2  // centered vertically
+    }
+
+    // Simulation
+    const simulation = d3.forceSimulation(nodes)
+      .force('charge', d3.forceManyBody().strength(-300))
+      .force('collision', d3.forceCollide().radius(r*2))
+      .force('link', d3.forceLink(links).id(d => d.id).distance(200).strength(1))
+      .force('x', d3.forceX(width / 2).strength(0.05))
+      .force('y', d3.forceY(height / 2).strength(0.05))
+      .alphaDecay(0.01)
+      .velocityDecay(0.2)
+
+
+    // Arrowheads definition
+    const defs = svg.append('defs')
+    defs.append('marker')
       .attr('id', 'arrow')
       .attr('viewBox', '0 -5 10 10')
-      .attr('refX', 22)
+      .attr('refX', r+arrowlen)
       .attr('refY', 0)
-      .attr('markerWidth', 6)
-      .attr('markerHeight', 6)
+      .attr('markerWidth', arrowlen)
+      .attr('markerHeight', arrowlen)
+      .attr('markerUnits', 'userSpaceOnUse')
       .attr('orient', 'auto')
       .append('path')
-      .attr('d', 'M0,-5L10,0L0,5')
-      .attr('fill', '#999')
+        .attr('d', 'M0,-5L10,0L0,5')
+        .attr('fill', '#000')
 
-    const simulation = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(links).id(d => d.id).distance(120))
-      .force('charge', d3.forceManyBody().strength(-500))
-      .force('center', d3.forceCenter(width / 2, height / 2))
+    defs.append('marker')
+      .attr('id', 'arrowLoop')
+      .attr('viewBox', '0 -5 10 10')
+      .attr('refX', r-arrowlen)               // use the same loop radius
+      .attr('refY', 0)
+      .attr('markerWidth', arrowlen)
+      .attr('markerHeight', arrowlen)
+      .attr('markerUnits', 'userSpaceOnUse')
+      .attr('orient', 'auto')
+      .append('path')
+        .attr('d', 'M0,-5L10,0L0,5')
+        .attr('fill', '#000');
 
-    const linkGroup = svg.append('g')
-    const nodeGroup = svg.append('g')
-    const labelGroup = svg.append('g')
-
-    const link = linkGroup.selectAll('path')
+    // Link paths
+    const linkG = svg.append('g')
+    const linkPaths = linkG.selectAll('path')
       .data(links)
       .enter()
       .append('path')
-      .attr('class', 'link')
-      .attr('stroke', '#999')
-      .attr('stroke-width', 2)
-      .attr('fill', 'none')
-      .attr('marker-end', 'url(#arrow)')
+        .attr('id', (d, i) => `linkPath-${i}`)
+        .attr('class', 'link')
+        .attr('stroke', '#000')
+        .attr('stroke-width', 1)
+        .attr('fill', 'none')
+        .attr('marker-end', d =>
+          d.source.id === d.target.id ? 'url(#arrowLoop)' : 'url(#arrow)')
 
-    const edgeLabels = labelGroup.selectAll('text')
+    const labelG = svg.append('g')
+    const edgeLabels = labelG.selectAll('text')
       .data(links)
       .enter()
       .append('text')
-      .attr('font-size', '12px')
-      .attr('text-anchor', 'middle')
-      .text(d => d.label)
+        .attr('class', 'edge-label')
+        .attr('text-anchor', 'middle')
+        .attr('dy', -2)  
+        .attr('stroke', '#fff')            // white outline
+        .attr('stroke-width', 1)           // outline thickness
+        .attr('paint-order', 'stroke') 
+        .text(d => d.label)
 
-    const node = nodeGroup.selectAll('g')
-      .data(nodes)
+
+    // Nodes
+    const nodeG = svg.append('g')
+    const node = nodeG.selectAll('g')
+      .data(visibleNodes)
       .enter()
       .append('g')
       .call(d3.drag()
         .on('start', dragstarted)
         .on('drag', dragged)
-        .on('end', dragended))
+        .on('end', dragended)
+      )
+      .on('click', function (_, d) {
+        if(d.isInitial) return
+        d.isPinned = !d.isPinned
+        if (d.isPinned) {
+          d.fx = d.x
+          d.fy = d.y
+        } else {
+          d.fx = null
+          d.fy = null
+        }
+        d3.select(this).select('circle')
+          .attr('stroke', d.isPinned ? '#000' : '#444')
+          .attr('stroke-width', d.isPinned ? 2 : 1)
+      })
 
-    node.append('circle')
-      .attr('r', 20)
-      .attr('fill', '#1f77b4')
+    node.each(function (d) {
+      const g = d3.select(this)
+      if (d.shape === 'image' && d.imageUrl) {
+        g.append('image')
+          .attr('href', d.imageUrl)
+          .attr('x', -30)
+          .attr('y', -30)
+          .attr('width', 55)
+          .attr('height', 55)
+          .attr('fill', '#fff')
+      } else {
+        g.append('circle')
+          .attr('r', 20)
+          .attr('fill', '#fff')
+          .attr('stroke', d.isPinned ? '#000' : '#444')
+          .attr('stroke-width', d.isPinned ? 4 : 2)
+      }
+    })
 
     node.append('text')
       .attr('dy', 5)
+      .attr('y', d => d.shape === 'image' ? -3 : 0)
+      .attr('x', d => d.shape === 'image' ? 3 : 0)
       .attr('text-anchor', 'middle')
-      .attr('fill', '#fff')
+      .attr('fill', '#000')
+      .attr('stroke', '#fff')            // white outline
+      .attr('stroke-width', 1)           // outline thickness
+      .attr('paint-order', 'stroke') 
       .text(d => d.id)
+    
+    node.select('circle')
+      .attr('stroke', d => d.isPinned ? '#000' : '#444')
+      .attr('stroke-width', d => d.isPinned ? 2 : 1)
 
-    simulation.on('tick', () => {
-      link.attr('d', d => {
+    const tooltip = d3.select('body').select('div.tooltip')
+    
+    node.on('mouseover', function (event, d) {
+    if (d.isPinned) {
+      tooltip
+        .style('opacity', 0.5)
+        .html('Pinned')
+        .style('left', (event.pageX + 10) + 'px')
+        .style('top', (event.pageY - 20) + 'px')
+    }
+    })
+
+    node.on('mousemove', function (event) {
+      tooltip
+        .style('left', (event.pageX + 10) + 'px')
+        .style('top', (event.pageY - 20) + 'px')
+    })
+
+    node.on('mouseout', function () {
+      tooltip.style('opacity', 0)
+    })
+
+    function ticked() {
+      linkPaths.attr('d', d => {
+        if (!d.source || !d.target) return ''
         if (d.source.id === d.target.id) {
+          // Self-loop
           const x = d.source.x
           const y = d.source.y
-          const r = 40
-          return `M${x},${y} A${r},${r} 0 1,1 ${x + 1},${y + 1}`
-        } else {
-          return `M${d.source.x},${d.source.y} L${d.target.x},${d.target.y}`
+          return `M${x},${y - loopR} A${loopR},${loopR} 0 1,1 ${x + 0.1},${y - loopR}`
         }
+
+        const dx = d.target.x - d.source.x;
+        const dy = d.target.y - d.source.y;
+        const dr = Math.sqrt(dx * dx + dy * dy) * 2
+
+        // Detect if the opposite edge exists
+        const hasReverse = links.some(
+          other =>
+            other.sourceId === d.targetId &&
+            other.targetId === d.sourceId
+        );
+
+        const isSameDir = d.sourceId < d.targetId
+        const sweepFlag = hasReverse ? (isSameDir ? 1 : 0) : 1
+
+        return `M${d.source.x},${d.source.y} A${dr},${dr} 0 0,${sweepFlag} ${d.target.x},${d.target.y}`
       })
 
       edgeLabels
-        .attr('x', d => (d.source.x + d.target.x) / 2)
-        .attr('y', d => (d.source.y + d.target.y) / 2 - 5)
+        .each(function(d, i) {
+          const me = d3.select(this);
+          if (d.source.id === d.target.id) {
+            me
+              .attr('x', d.source.x + 15)
+              .attr('y', d.source.y - 45)
+            return
+          }
+          const path = document.getElementById(`linkPath-${i}`)
+          if (!path) return;
+          const L = path.getTotalLength();
+          const pt = path.getPointAtLength(L / 2)
+          me.attr('x', pt.x).attr('y', pt.y - 3);    
+        });
 
-      node.attr('transform', d => `translate(${d.x},${d.y})`)
-    })
+        node.attr('transform', d => `translate(${d.x},${d.y})`)
+    }
+
+    // Tick updates
+    simulation.on('tick', ticked)
+    ticked()
+    return () => simulation.stop()
 
     function dragstarted(event, d) {
+      if(d.isInitial) return
       if (!event.active) simulation.alphaTarget(0.3).restart()
       d.fx = d.x
       d.fy = d.y
     }
 
     function dragged(event, d) {
+      if(d.isInitial) return
       d.fx = event.x
       d.fy = event.y
     }
 
     function dragended(event, d) {
+      if(d.isInitial) return
       if (!event.active) simulation.alphaTarget(0)
-      d.fx = null
-      d.fy = null
+      if (!d.isPinned) {
+        d.fx = null
+        d.fy = null
+      }
     }
   }, [graphData])
 
   return (
-    <svg ref={svgRef} style={{ width: '100%', height: '500px', border: '1px solid #ccc' }}></svg>
+    <svg ref={svgRef} style={{ width: '100%', height: '100%', display: 'block' }}></svg>
   )
 }
