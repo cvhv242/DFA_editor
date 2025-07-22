@@ -37,3 +37,54 @@ div[style*="resize"] {
   resize: horizontal;
   overflow: auto;
 }
+
+.cli-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* if you have a header above, you can use justify-content: space-between */
+  justify-content: space-between;
+  padding: 0.5rem;
+  background: #1e1e1e; /* match your terminal bg */
+}
+
+/* the little prompt + input */
+.cli-input-container {
+  display: flex;
+  align-items: flex-start;
+  background: #252526;
+  border: 1px solid #333;
+  border-radius: 4px;
+  overflow: auto;
+}
+
+/* the “>” in green (or any color) */
+.cli-prompt {
+  padding: 0.5rem;
+  color: #0f0;
+  font-family: 'Fira Code', monospace;
+  font-weight: bold;
+}
+
+/* the actual text area, no border, transparent background */
+.cli-input {
+  flex: 1;
+  padding: 0.5rem;
+  background: transparent;
+  border: none;
+  resize: none;
+  outline: none;
+  color: #d4d4d4;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.95rem;
+  line-height: 1.25;
+}
+
+/* placeholder in a slightly dimmer color */
+.cli-input::placeholder {
+  color: #666;
+}
+
+.cli-input-container:focus-within {
+  border-color: #555;
+}

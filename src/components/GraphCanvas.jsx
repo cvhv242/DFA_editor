@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 
-export default function GraphCanvas({ graphData }) {
+export default function GraphCanvas({ graphData, pinAll }) {
   const svgRef = useRef()
   useEffect(() => {
     const tooltip = d3.select('body')
@@ -18,15 +18,21 @@ export default function GraphCanvas({ graphData }) {
     return () => tooltip.remove()
   }, [])
 
-
+  const lastTransform = useRef(d3.zoomIdentity)
   useEffect(() => {
     const svg = d3.select(svgRef.current)
 
-    if (!graphData || graphData.nodes.length === 0 || graphData.links.length === 0) {
+    if (!graphData || graphData.nodes.length === 0) {
       svg.selectAll('*').remove()
       return
     }
     svg.selectAll('*').remove()
+    const zoomBehavior = d3.zoom()
+      .scaleExtent([0.2, 4])
+      .on('zoom', zoomed)
+    svg.call(zoomBehavior)
+      .on('dblclick.zoom', null)
+    const content = svg.append('g').attr('class','zoomable').attr('transform', lastTransform.current)
 
     const width = svgRef.current?.clientWidth || 800
     const height = svgRef.current?.clientHeight || 500
@@ -60,11 +66,21 @@ export default function GraphCanvas({ graphData }) {
     const simulation = d3.forceSimulation(nodes)
       .force('charge', d3.forceManyBody().strength(-300))
       .force('collision', d3.forceCollide().radius(r*2))
-      .force('link', d3.forceLink(links).id(d => d.id).distance(200).strength(1))
+      .force('link', d3.forceLink(links).id(d => d.id).distance(150).strength(1))
       .force('x', d3.forceX(width / 2).strength(0.05))
       .force('y', d3.forceY(height / 2).strength(0.05))
-      .alphaDecay(0.01)
-      .velocityDecay(0.2)
+      .alphaDecay(0.005)
+      .velocityDecay(0.3)
+    
+    if (pinAll) {
+      simulation.on('end', () => {
+        simulation.nodes().forEach(d => {
+          d.fx = d.x
+          d.fy = d.y
+        })
+        simulation.alpha(0)  // stop it
+      })
+    }
 
 
     // Arrowheads definition
@@ -96,7 +112,7 @@ export default function GraphCanvas({ graphData }) {
         .attr('fill', '#000');
 
     // Link paths
-    const linkG = svg.append('g')
+    const linkG = content.append('g')
     const linkPaths = linkG.selectAll('path')
       .data(links)
       .enter()
@@ -109,7 +125,7 @@ export default function GraphCanvas({ graphData }) {
         .attr('marker-end', d =>
           d.source.id === d.target.id ? 'url(#arrowLoop)' : 'url(#arrow)')
 
-    const labelG = svg.append('g')
+    const labelG = content.append('g')
     const edgeLabels = labelG.selectAll('text')
       .data(links)
       .enter()
@@ -121,10 +137,11 @@ export default function GraphCanvas({ graphData }) {
         .attr('stroke-width', 1)           // outline thickness
         .attr('paint-order', 'stroke') 
         .text(d => d.label)
+      .merge(linkPaths)
 
 
     // Nodes
-    const nodeG = svg.append('g')
+    const nodeG = content.append('g')
     const node = nodeG.selectAll('g')
       .data(visibleNodes)
       .enter()
@@ -277,7 +294,12 @@ export default function GraphCanvas({ graphData }) {
         d.fy = null
       }
     }
-  }, [graphData])
+    function zoomed({ transform }) {
+      lastTransform.current = transform
+      content.attr('transform', transform)
+    }
+    
+  }, [graphData, pinAll])
 
   return (
     <svg ref={svgRef} style={{ width: '100%', height: '100%', display: 'block' }}></svg>

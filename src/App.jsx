@@ -1,4 +1,5 @@
 import './styles/graph.css'
+import './styles/app.css'
 import InputBox from './components/InputBox'
 import GraphCanvas from './components/GraphCanvas'
 import { useState } from 'react'
@@ -7,6 +8,20 @@ function App() {
 
   const [graphData, setGraphData] = useState({ nodes: [], links: [] })
   const [pinAll, setPinAll] = useState(false)
+
+  const handleUnpinAll = () => {
+    setGraphData( prev => {
+      prev.nodes.forEach(n => {
+      n.isPinned = false
+      n.fx = null
+      n.fy = null
+    })
+    return {
+      nodes: [...prev.nodes],
+      links: prev.links
+    }})
+    setPinAll(false)
+  }
 
   const handlePinAll = () => {
     setGraphData(prev => {
@@ -28,62 +43,24 @@ function App() {
     setPinAll(!pinAll)
   }
   const handleReset = () => {
-    setRawLines([])
-    setInputValue('')
     setGraphData({ nodes: [], links: [] })
     setPinAll(false)
   }
 
 
   return (
-    <div style={{
-      display: 'flex',
-      height: '100vh',  // Full viewport height
-      overflow: 'hidden',
-    }}>
-      <div style={{
-          width: '25%',
-          minWidth: '200px',
-          resize: 'horizontal',
-          overflow: 'auto',
-          borderRight: '1px solid #ccc',
-          padding: '1rem',
-          background: '#f5f5f5',
-        }}>
-        <h2>DFA Input</h2>
+    <div className='app-container'>
+      <div className='main-content'>
+        <GraphCanvas graphData={graphData} pinAll={handlePinAll} />
+      </div>
+      <div className="footer">
         <InputBox 
-          setGraphData={setGraphData}
+          setGraphData={setGraphData} 
+          graphData={graphData} 
+          onPinAll={handlePinAll}
+          onUnpinAll={handleUnpinAll}
+          onReset={handleReset}
         />
-
-      </div>
-
-      <div style={{
-          flexGrow: 1,
-          position: 'relative',
-          resize: 'horizontal',
-          overflow: 'hidden',
-        }}>
-        <GraphCanvas graphData={graphData} />
-      </div>
-      <div style={{
-          width: '15%',
-          minWidth: '150px',
-          resize: 'horizontal',
-          overflow: 'auto',
-          borderLeft: '1px solid #ccc',
-          padding: '1rem',
-          background: '#f0f0f0',
-        }}>
-        <h2>Controls</h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <button onClick={handlePinAll}>
-            {pinAll ? 'Unpin All' : 'Pin All'}
-          </button>
-          <button onClick={handleReset}>
-            Reset Layout
-          </button>
-          {/* Future buttons go here */}
-        </div>
       </div>
     </div>
   )
