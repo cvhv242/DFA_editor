@@ -19,25 +19,33 @@ export default function GraphCanvas({ graphData, pinAll }) {
   }, [])
 
   const lastTransform = useRef(d3.zoomIdentity)
+  const prevPin = useRef(pinAll)    
   useEffect(() => {
     const svg = d3.select(svgRef.current)
-
-    if (!graphData || graphData.nodes.length === 0) {
-      svg.selectAll('*').remove()
-      return
-    }
     svg.selectAll('*').remove()
     const zoomBehavior = d3.zoom()
       .scaleExtent([0.2, 4])
       .on('zoom', zoomed)
     svg.call(zoomBehavior)
-      .on('dblclick.zoom', null)
+      // .on('dblclick.zoom', null)
     const content = svg.append('g').attr('class','zoomable').attr('transform', lastTransform.current)
+
+    if (!graphData || graphData.nodes.length === 0) {
+      lastTransform.current = d3.zoomIdentity
+      svg.call(zoomBehavior.transform, lastTransform.current)
+      svg.selectAll('*').remove()
+      return
+    }
+    
 
     const width = svgRef.current?.clientWidth || 800
     const height = svgRef.current?.clientHeight || 500
 
-    const nodes = graphData.nodes
+    const nodes = graphData.nodes.map(n => ({
+      ...n,
+      fx: n.fx ?? undefined,
+      fy: n.fy ?? undefined
+    }))
     const links = graphData.links
 
     const r = 20
@@ -46,22 +54,29 @@ export default function GraphCanvas({ graphData, pinAll }) {
 
     // ✅ Resolve source/target references from node IDs
     links.forEach(link => {
-      if (typeof link.source === 'string') {
-        link.source = nodes.find(n => n.id === link.source)
-      }
-      if (typeof link.target === 'string') {
-        link.target = nodes.find(n => n.id === link.target)
-      }
+      const srcId = typeof link.source === 'string'
+                  ? link.source
+                  : link.source.id;           // ← object → id
+      const tgtId = typeof link.target === 'string'
+                  ? link.target
+                  : link.target.id;
+
+      link.source = nodes.find(n => n.id === srcId);
+      link.target = nodes.find(n => n.id === tgtId);
     })
 
     const visibleNodes = nodes.filter(n => !n.invisible)
 
     const initialNode = visibleNodes.find(n => n.isInitial)
-    if (initialNode) {
+    if (initialNode && (initialNode.fx == null || initialNode.fy == null)) {
       initialNode.fx = 100   // x-position fixed to left side
       initialNode.fy = height / 2  // centered vertically
     }
 
+    nodes.forEach(n => {
+      if (n.fx === null) delete n.fx;
+      if (n.fy === null) delete n.fy;
+    });
     // Simulation
     const simulation = d3.forceSimulation(nodes)
       .force('charge', d3.forceManyBody().strength(-300))
@@ -71,16 +86,6 @@ export default function GraphCanvas({ graphData, pinAll }) {
       .force('y', d3.forceY(height / 2).strength(0.05))
       .alphaDecay(0.005)
       .velocityDecay(0.3)
-    
-    if (pinAll) {
-      simulation.on('end', () => {
-        simulation.nodes().forEach(d => {
-          d.fx = d.x
-          d.fy = d.y
-        })
-        simulation.alpha(0)  // stop it
-      })
-    }
 
 
     // Arrowheads definition
@@ -180,8 +185,17 @@ export default function GraphCanvas({ graphData, pinAll }) {
         g.append('circle')
           .attr('r', 20)
           .attr('fill', '#fff')
-          .attr('stroke', d.isPinned ? '#000' : '#444')
-          .attr('stroke-width', d.isPinned ? 4 : 2)
+          .attr('stroke', d.isFinal ? 'green' : (d.isPinned ? '#000' : '#444'))
+          .attr('stroke-width', d.isFinal ? 3 : (d.isPinned ? 4 : 2));
+
+        if (d.isFinal) {
+          g.append('circle')
+            .attr('r', 24)
+            .attr('fill', 'none')
+            .attr('stroke', '#000')
+            .attr('stroke-width', 1.5);
+        }
+
       }
     })
 
@@ -222,6 +236,8 @@ export default function GraphCanvas({ graphData, pinAll }) {
       tooltip.style('opacity', 0)
     })
 
+  
+
     function ticked() {
       linkPaths.attr('d', d => {
         if (!d.source || !d.target) return ''
@@ -239,8 +255,8 @@ export default function GraphCanvas({ graphData, pinAll }) {
         // Detect if the opposite edge exists
         const hasReverse = links.some(
           other =>
-            other.sourceId === d.targetId &&
-            other.targetId === d.sourceId
+            other.source?.id === d.target?.id &&
+            other.target?.id === d.source?.id
         );
 
         const isSameDir = d.sourceId < d.targetId
@@ -251,6 +267,7 @@ export default function GraphCanvas({ graphData, pinAll }) {
 
       edgeLabels
         .each(function(d, i) {
+          if(!d.source || !d.target)  return ''
           const me = d3.select(this);
           if (d.source.id === d.target.id) {
             me
@@ -284,6 +301,7 @@ export default function GraphCanvas({ graphData, pinAll }) {
       if(d.isInitial) return
       d.fx = event.x
       d.fy = event.y
+      ticked()
     }
 
     function dragended(event, d) {
@@ -293,6 +311,7 @@ export default function GraphCanvas({ graphData, pinAll }) {
         d.fx = null
         d.fy = null
       }
+      ticked()
     }
     function zoomed({ transform }) {
       lastTransform.current = transform
