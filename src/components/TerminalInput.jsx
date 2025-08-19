@@ -27,12 +27,14 @@ export default function TerminalInput({ graphData, setGraphData, onReset }) {
     terminal.current = new Terminal({
       cursorBlink: true,
       rows: 10,
+      scrollback: 2000,
       theme: { background: '#1e1e1e', foreground: '#ffffff' },
     })
     fitAddon.current = new FitAddon()
     terminal.current.loadAddon(fitAddon.current)
     terminal.current.open(termRef.current)
     fitAddon.current.fit()
+    terminal.current.focus()
 
     // 2) Initial prompt
     terminal.current.write('\x1b[32m$ \x1b[0m')
@@ -395,7 +397,7 @@ export default function TerminalInput({ graphData, setGraphData, onReset }) {
       style={{
         width: '100%', height: '100%',
         background: '#1e1e1e', borderRadius: '4px',
-        overflow: 'auto',
+        overflow: 'hidden',
       }}
     />
   )

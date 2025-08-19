@@ -44,21 +44,137 @@
 .app-container {
   display: flex;
   flex-direction: column;
-  height: 90vh;        /* fills #root */
+  height: 96vh;        /* fills #root */
   overflow: hidden;
   margin: 0;
   padding: 0;
 }
 
 .main-content { 
-  flex: 7; 
-  overflow: auto; }
+  flex: 0 0 auto; 
+  overflow: auto; 
+}
+
+.splitter {
+  height: 6px;
+  background: linear-gradient(#2a2a2a, #1f1f1f);
+  cursor: row-resize;
+  user-select: none;
+}
 
 .footer {
-  padding: 0.25rem;
-  flex: 3;
-  overflow: hidden;
-  background: #000;
-  color: #0f0;  
-  height: 220px;
+  flex: 0 0 auto;    /* height controlled inline */
+  display: flex;
+  flex-direction: column;
+  background: #111;
+  color: #fff;
+  border-top: 1px solid #111;
+  overflow: hidden;  /* the body owns internal scroll */
+  min-height: 120px;
 }
+
+/* when maximized we already override height inline; keep layout tidy */
+.footer.max {
+  border-top-color: #111;
+}
+
+/* header doubles as the drag handle */
+.panel-header {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  background: #111;
+  border-bottom: 1px solid #111;
+  cursor: row-resize;   /* shows you can drag it */
+  user-select: none;
+}
+.panel-title {
+  font-size: 14px;
+  letter-spacing: .5px;
+  color: #aaa;
+}
+.panel-actions {
+  display: flex;
+  gap: 6px;
+}
+.panel-btn {
+  background: transparent;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ccc;
+  font-size: 12px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+.panel-btn:hover {
+  background: #222;
+}
+
+/* terminal body (xterm container) fills remaining height */
+.panel-body {
+  flex: 1 1 auto;
+  overflow: hidden;   /* xterm manages its own scroll internally */
+}
+
+.help-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  background: #222;
+  color: #ddd;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.help-button:hover { background: #2b2b2b; }
+
+/* manual page layout */
+.manual-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #111;
+  color: #eee;
+}
+.manual-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #151515;
+  border-bottom: 1px solid #2a2a2a;
+}
+.manual-header h1 {
+  font-size: 16px;
+  margin: 0;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  color: #bbb;
+}
+.back-btn {
+  background: #222;
+  color: #ddd;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.back-btn:hover { background: #2b2b2b; }
+
+.manual-body {
+  padding: 16px 18px;
+  overflow: auto;
+  line-height: 1.5;
+}
+.manual-body pre {
+  background: #0f0f0f;
+  border: 1px solid #222;
+  padding: 12px;
+  border-radius: 8px;
+  overflow: auto;
+}
+.manual-body .note { color: #aaa; }
