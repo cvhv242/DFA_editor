@@ -129,7 +129,8 @@ export default function GraphCanvas({ graphData, pinAll }) {
         .attr('fill', 'none')
         .attr('marker-end', d =>
           d.source.id === d.target.id ? 'url(#arrowLoop)' : 'url(#arrow)')
-
+        linkPaths
+        .attr('stroke-dasharray', d => d.style === 'dashed' ? '4 3' : null);
     const labelG = content.append('g')
     const edgeLabels = labelG.selectAll('text')
       .data(links)
@@ -146,6 +147,9 @@ export default function GraphCanvas({ graphData, pinAll }) {
 
 
     // Nodes
+    const BOX_W = 64;
+    const BOX_H = 36;
+    const BOX_RX = 8;
     const nodeG = content.append('g')
     const node = nodeG.selectAll('g')
       .data(visibleNodes)
@@ -166,9 +170,10 @@ export default function GraphCanvas({ graphData, pinAll }) {
           d.fx = null
           d.fy = null
         }
-        d3.select(this).select('circle')
+        const shapeSel = d3.select(this).select(d.shape === 'box' ? 'rect' : 'circle');
+        shapeSel
           .attr('stroke', d.isPinned ? '#000' : '#444')
-          .attr('stroke-width', d.isPinned ? 2 : 1)
+          .attr('stroke-width', d.isPinned ? 2 : 1);
       })
 
     node.each(function (d) {
@@ -181,12 +186,37 @@ export default function GraphCanvas({ graphData, pinAll }) {
           .attr('width', 55)
           .attr('height', 55)
           .attr('fill', '#fff')
+      } else if(d.shape === 'box') {
+        g.append('rect')
+          .attr('x', -BOX_W / 2)
+          .attr('y', -BOX_H / 2)
+          .attr('width', BOX_W)
+          .attr('height', BOX_H)
+          .attr('rx', BOX_RX)
+          .attr('ry', BOX_RX)
+          .attr('fill', '#fff')
+          .attr('stroke', d.isPinned ? '#000' : '#444')
+          .attr('stroke-width', d.isPinned ? 2 : 1);
+
+        // double-border for finals (slightly larger outline)
+        if (d.isFinal) {
+          g.append('rect')
+            .attr('x', -BOX_W / 2 - 4)
+            .attr('y', -BOX_H / 2 - 4)
+            .attr('width', BOX_W + 8)
+            .attr('height', BOX_H + 8)
+            .attr('rx', BOX_RX + 2)
+            .attr('ry', BOX_RX + 2)
+            .attr('fill', 'none')
+            .attr('stroke', '#000')
+            .attr('stroke-width', 1.5);
+        }
       } else {
         g.append('circle')
           .attr('r', 20)
           .attr('fill', '#fff')
-          .attr('stroke', d.isFinal ? 'green' : (d.isPinned ? '#000' : '#444'))
-          .attr('stroke-width', d.isFinal ? 3 : (d.isPinned ? 4 : 2));
+          .attr('stroke', d.isPinned ? '#000' : '#444')
+          .attr('stroke-width', d.isPinned ? 2 : 1);
 
         if (d.isFinal) {
           g.append('circle')
@@ -210,9 +240,9 @@ export default function GraphCanvas({ graphData, pinAll }) {
       .attr('paint-order', 'stroke') 
       .text(d => d.id)
     
-    node.select('circle')
+    node.selectAll('circle, rect')
       .attr('stroke', d => d.isPinned ? '#000' : '#444')
-      .attr('stroke-width', d => d.isPinned ? 2 : 1)
+      .attr('stroke-width', d => d.isPinned ? 2 : 1);
 
     const tooltip = d3.select('body').select('div.tooltip')
     

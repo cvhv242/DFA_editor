@@ -25,8 +25,6 @@ function App() {
         <TerminalInput 
           setGraphData={setGraphData} 
           graphData={graphData} 
-          onPinAll={() => setPinAll(true)}
-          onUnpinAll={() => setPinAll(false)}
           onReset={handleReset}
         />
       </div>

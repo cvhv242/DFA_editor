@@ -2,17 +2,23 @@ import { useEffect, useRef } from 'react'
 import { Terminal }        from 'xterm'
 import { FitAddon }        from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
-import { parseInput }      from '../utils/parser'
+import { parseInput }      from '../utils/parser.js'
+import { buildProduct } from '../utils/product.js'
+import bddToJson from '../bdd/bdd-to-json.js';
+import buildRelBDD from '../bdd/dfa2bdd-rel.js';
 
-export default function TerminalInput({ graphData, setGraphData, onPinAll, onUnpinAll, onReset }) {
+export default function TerminalInput({ graphData, setGraphData, onReset }) {
   const termRef       = useRef(null)
   const terminal      = useRef(null)
   const fitAddon      = useRef(null)
+  const dfaLeft  = useRef(null);   // hold original DFAs
+  const dfaRight = useRef(null);
+
 
   const buffer        = useRef('')       // the current typing buffer
   const rawLines      = useRef([])       // only *good* lines go here
   const history       = useRef([])  
-  const awaitingReset = useRef(false);
+  const awaitingReset = useRef(false)
   const dataRef       = useRef(graphData)
 
   useEffect(() => { dataRef.current = graphData }, [graphData])
@@ -47,16 +53,6 @@ export default function TerminalInput({ graphData, setGraphData, onPinAll, onUnp
 
         const { nodes, links } = dataRef.current
         switch(command) {
-          // case 'pinall':
-          //   onPinAll()
-          //   history.current.push({ type: 'command', text: `$ ${line}` })
-          //   t.write('\x1b[32m$ \x1b[0m')
-          //   return
-          // case 'unpinall':
-          //   onUnpinAll()
-          //   history.current.push({ type: 'command', text: `$ ${line}` })
-          //   t.write('\x1b[32m$ \x1b[0m')
-          //   return
           case 'reset': {
             if (awaitingReset.current) return;
 
@@ -80,6 +76,14 @@ export default function TerminalInput({ graphData, setGraphData, onPinAll, onUnp
               }
             });
 
+            return;
+          }
+
+          case 'manual':
+          case 'help':
+          case '?': {
+            printManual(terminal.current);
+            terminal.current.write('\x1b[32m$ \x1b[0m');
             return;
           }
 
@@ -187,6 +191,7 @@ export default function TerminalInput({ graphData, setGraphData, onPinAll, onUnp
           }
 
           case 'load': {
+            const slot = parts[1]?.toLowerCase() ?? 'left';
             const input = document.createElement('input')
             input.type = 'file'
             input.accept = '.json'
@@ -196,6 +201,8 @@ export default function TerminalInput({ graphData, setGraphData, onPinAll, onUnp
               try {
                 const text = await file.text()
                 const { nodes, links } = JSON.parse(text)
+                if (slot === 'left')  dfaLeft.current  = { nodes, links };
+                if (slot === 'right') dfaRight.current = { nodes, links };
 
                 // Normalize loaded nodes
                 const normalizedNodes = nodes.map(n => ({
@@ -228,6 +235,21 @@ export default function TerminalInput({ graphData, setGraphData, onPinAll, onUnp
             return
           }
 
+          case 'intersect':
+          case 'union': {
+            if (!dfaLeft.current || !dfaRight.current) {
+              terminal.current.writeln('\x1b[31mLoad two DFAs first (left & right)\x1b[0m');
+              break;
+            }
+            const op = command === 'intersect' ? '∩' : '∪';
+            const product = buildProduct(dfaLeft.current, dfaRight.current, op);
+            setGraphData(product);
+            history.current.push({ type:'command', text:`$ ${command}`});
+            terminal.current.write('\x1b[32m$ \x1b[0m');
+            return;
+          }
+
+
           case 'mydfa': {
             const { nodes, links } = dataRef.current
             const Q = nodes.map(n => n.id);
@@ -259,24 +281,44 @@ export default function TerminalInput({ graphData, setGraphData, onPinAll, onUnp
           }
 
           case 'complement': {
-            // 1) Parse the existing script (without the new line)
             const { nodes, links } = dataRef.current;
-           
 
-            // 2) Flip finality of every non-initial node *once*
             const flippedNodes = nodes.map(n =>
               n.isInitial ? n : { ...n, isFinal: !n.isFinal }
             );
 
-            // 3) Push the new state to React (links stay the same)
             setGraphData({ nodes: flippedNodes, links });
 
-            // 4) Echo command into history / prompt, but do *not* save it in rawLines
             history.current.push({ type:'command', text: '$ complement' });
             terminal.current.write('\x1b[32m$ \x1b[0m');
-            return;              // ← important: skip the default fall-through
+            return;              
           }
 
+          case 'showbdd': {                        // ⇢ replaces canvas with the BDD
+            const dfa   = dataRef.current;
+            const { T, mgr } = buildRelBDD(dfa);
+            const { nodes, links } = bddToJson(T, mgr);
+            setGraphData({ nodes, links });
+            history.current.push({ type:'command', text:'$ showbdd+' });
+            terminal.current.write('\x1b[32m$ \x1b[0m');
+            return; 
+          }
+
+          case 'accept': {
+            const word = (parts[1] || '').trim(); // e.g.,: accept ababa
+            if (!word) {
+              terminal.current.writeln('\x1b[31mUsage: accept <word>\x1b[0m');
+            } else {
+              const dfa = dataRef.current;
+              const { acceptsWord } = buildRelBDD(dfa);
+              const ok = acceptsWord(word.split(''));
+              terminal.current.writeln(ok
+                ? '\x1b[32maccepted\x1b[0m'
+                : '\x1b[31mrejected\x1b[0m');
+            }
+            terminal.current.write('\x1b[32m$ \x1b[0m');
+            return;
+          }
 
           default:
             if (line) {
@@ -325,7 +367,7 @@ export default function TerminalInput({ graphData, setGraphData, onPinAll, onUnp
                 })
                 reminders.forEach(r => t.write(`\x1b[33m${r}\x1b[0m\r\n`))
               }
-            }
+          }
         }
         // always re-print prompt
         t.write('\x1b[32m$ \x1b[0m')
@@ -357,4 +399,57 @@ export default function TerminalInput({ graphData, setGraphData, onPinAll, onUnp
       }}
     />
   )
+}
+
+function printManual(t) {
+  const header = s => `\x1b[1m\x1b[36m${s}\x1b[0m`;     // bold cyan
+  const cmd    = s => `\x1b[33m${s}\x1b[0m`;             // yellow
+  const note   = s => `\x1b[2m${s}\x1b[0m`;              // dim
+
+  t.writeln(header('DFA CLI Manual'));
+
+  t.writeln(header('Building & Editing'));
+  t.writeln(cmd('$ s s\' <labels>') + ' : Add transition(s). <labels> can be comma-separated (e.g., "0,1").');
+  t.writeln(cmd('$ cnode s1,>s2,s3') + ' : Create nodes s1, s2, s3; prefix ">" makes that node initial (e.g., >s2).');
+  t.writeln(cmd('$ dnode s1,s2,...') + ' : Delete listed nodes and their incident edges.');
+  t.writeln(cmd('$ initial s1') + ' : Mark listed node as initial.');
+  t.writeln(cmd('$ final s1,s2,...') + ' : Mark listed nodes as final.');
+  t.writeln(cmd('$ unfinal s1,s2,...') + ' : Unmark listed nodes as final.');
+  t.writeln(cmd('$ dtrans s1 s2') + ' : Delete all transitions from s1 to s2.');
+  t.writeln(cmd('$ dtrans s1 s2 i1,i2,...') + ' : Delete only s1→s2 transitions with these labels.');
+  t.writeln(cmd('$ chtrans s1 s2 i1,i2,...') + ' : Replace ALL labels on s1→s2 with i1,i2,... (DFA totality validated).');
+
+  t.writeln(header('Introspection'));
+  t.writeln(cmd('$ mydfa') + ' : Print the 5-tuple (Q, Σ, q₀, F, δ).');
+  t.writeln(cmd('$ allstates') + ' : List all states.');
+  t.writeln(cmd('$ allfinal') + ' : List all final states.');
+  t.writeln(cmd('$ allinitial') + ' : Show the initial state (if any).');
+  t.writeln(cmd('$ alltransitions') + ' : List all transitions.');
+  t.writeln(cmd('$ alphabet') + ' : List the alphabet (transition labels).');
+  t.writeln(cmd('$ accept <word>') + ' : Check membership; prints "accepted" or "rejected".');
+
+  t.writeln(header('Files'));
+  t.writeln(cmd('$ save <name>') + ' : Save current DFA to <name>.json.');
+  t.writeln(cmd('$ load') + ' : Load a DFA into the left slot (default).');
+  t.writeln(cmd('$ load right') + ' : Load a DFA into the right slot.');
+
+  t.writeln(header('Set Operations'));
+  t.writeln(cmd('$ union') + ' : Build the union of left and right DFAs.');
+  t.writeln(cmd('$ intersect') + ' : Build the intersection of left and right DFAs.');
+  t.writeln(note('  (Use "intersect" — not "intersects" — per current implementation.)'));
+
+  t.writeln(header('BDD / Symbolic'));
+  t.writeln(cmd('$ showbdd') + ' : Show BDD equivalent of the current DFA');
+
+  t.writeln(header('Session'));
+  t.writeln(cmd('$ undo') + ' : Undo the last successful command.');
+  t.writeln(cmd('$ reset') + ' : Clear terminal and canvas.');
+
+  t.writeln(header('Manual'));
+  t.writeln(cmd('$ manual') + ' : Print the command manual');
+
+  t.writeln(header('Notes'));
+  t.writeln('• To set an initial at creation time, use ' + cmd('cnode') + ' with a ' + cmd('>') + ' prefix (e.g., ' + cmd('cnode >a,b,c') + ' or ' + cmd('>a b 1') + ').');
+  t.writeln('• To set an initial at creation time, mark source state initial and not destination state (e.g., ' + cmd('>a b 1') + ' not ' + cmd('a >b 1') + ').');
+  t.writeln('');
 }

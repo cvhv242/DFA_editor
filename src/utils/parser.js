@@ -1,10 +1,8 @@
-import { line } from "d3";
-
-/**
+/*
  * Commands:
  * $from_state to_state input: add new transition between from_state and to_state with label input.
- * $pinall: pins all the nodes into their current places 
- * $unpinall: unpins all nodes into free movement
+ * $pinall: pins all the nodes into their current places (isnt working)
+ * $unpinall: unpins all nodes into free movement (isnt working)
  * $reset: clears the console and canvas data
  * $initial state_name: changes initial state_name from regular to initial state 
  * $cnode s1,>s2,s3,..: creates new nodes s1, s2, s3 ... and makes s2 an initial state
@@ -12,8 +10,24 @@ import { line } from "d3";
  * $final s1,s2,s3,..: makes nodes s1, s2, s3 ... final states
  * $unfinal s1,s2,s3,..: makes final states s1, s2, s3 ... non-final states
  * $dtrans s1 s2: Deletes all transitions from s1 to s2
- * $dtrans s1 s2: Deletes only the transitions from s1 to s2 with 
- */
+ * $dtrans s1 s2 i: Deletes only the transitions from s1 to s2 with input label i
+ * $chtrans s1 s2 i1,i2,..: Changes all the transition labels from s1 to s2 to i1,i2,.. with totality validation
+ * $undo: Undoes the last command
+ * $mydfa: Gives the 5-tuple definition of the current DFA
+ * $allstates: Lists all the states 
+ * $allfinal: Lists all final states
+ * $allinitial: Lists all initial states
+ * $alltransitions: Lists all transitions
+ * $alphabet: Lists all alphabet (transition input labels) 
+ * $save d1: Saves current graph on your computer as d1.json
+ * $load: Loads a graph stored as a json file on your computer onto the screen and by default stores it into 'left' 
+ * $load right: Loads a graph stored as a json file on your computer onto the screen and stores it in 'right'
+ * $union: Unions the left and right DFAs
+ * $intersects: Intersects the left and right DFAs
+ * $complement: Complements the current DFA
+ * $showbdd: Shows the BDD of the current DFA (in progress)
+ * $accept word: returns 'accepted' if 'word' is accepted by the DFA and 'rejected' if not. 
+*/
 export function parseInput(raw, prev = { nodes: [], links: [], complementCount: 0}) {
 
   const lines = raw.trim().split('\n').map(l => l.trim()).filter(Boolean);
