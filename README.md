@@ -1,12 +1,34 @@
-# React + Vite
+# DFA CLI Visualizer (React + D3 + xterm)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+An interactive, terminal-driven tool to define, visualize, and manipulate Deterministic Finite Automata (DFA) — with optional Binary Decision Diagram (BDD) views.
 
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
 - [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
 
-## Expanding the ESLint configuration
+## Features
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Terminal-first UX — create states, transitions, and run queries like a shell.
+
+Live DFA canvas (D3) — drag, pin/unpin, and see updates instantly.
+
+Determinism & totality helpers — duplicate-label checks and friendly reminders.
+
+Set operations — union, intersect, and complement.
+
+BDD views
+
+showbdd — snapshot BDD (I ∧ T ∧ S).
+
+showbdd+ — relational BDD of T(x, a, x′) with symbolic steps.
+
+bdd-js — export Graphviz .dot.
+
+accept <word> — symbolic membership.
+
+Undo & Save/Load — undo last command; save/load DFAs as JSON.
+
+Resizable terminal panel — drag the terminal header to resize (VS Code-style).
+
+Inline Manual — click Help or visit #/manual.
