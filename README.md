@@ -9,26 +9,22 @@ Currently, two official plugins are available:
 
 ## Features
 
-Terminal-first UX — create states, transitions, and run queries like a shell.
+- Terminal-first UX — create states, transitions, and run queries like a shell.
 
-Live DFA canvas (D3) — drag, pin/unpin, and see updates instantly.
+- Live DFA canvas (D3) — drag, pin/unpin, and see updates instantly.
 
-Determinism & totality helpers — duplicate-label checks and friendly reminders.
+- Determinism & totality helpers — duplicate-label checks and friendly reminders.
 
-Set operations — union, intersect, and complement.
+- Set operations — union, intersect, and complement.
 
-BDD views
+- BDD views
 
-showbdd — snapshot BDD (I ∧ T ∧ S).
+- showbdd — relational BDD of T(x, a, x′) with symbolic steps.
 
-showbdd+ — relational BDD of T(x, a, x′) with symbolic steps.
+- accept <word> — symbolic membership.
 
-bdd-js — export Graphviz .dot.
+- Undo & Save/Load — undo last command; save/load DFAs as JSON.
 
-accept <word> — symbolic membership.
+- Resizable terminal panel — drag the terminal header to resize (VS Code-style).
 
-Undo & Save/Load — undo last command; save/load DFAs as JSON.
-
-Resizable terminal panel — drag the terminal header to resize (VS Code-style).
-
-Inline Manual — click Help or visit #/manual.
+- Inline Manual — click Help or visit #/manual.
