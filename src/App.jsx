@@ -6,9 +6,11 @@ import TerminalInput from './components/TerminalInput'
 import ManualPage from './components/ManualPage'
 
 function App() {
+  document.title = "DFA CLI visualizer";
 
   const [graphData, setGraphData] = useState({ nodes: [], links: [] })
   const [pinAll, setPinAll] = useState(false)
+  const [viewMode, setViewMode]   = useState('dfa');
   const containerRef = useRef(null)
   const draggingRef = useRef(false)
   const startYRef = useRef(0)
@@ -89,7 +91,7 @@ function App() {
             className='main-content'
             style={{ height: maximized ? 0 : `calc(100% - ${termHeight}px - 6px)` }} // 6px splitter
           >
-            <GraphCanvas graphData={graphData} pinAll={pinAll} />
+            <GraphCanvas graphData={graphData} viewMode = {viewMode} />
           </div>
 
           <div className="splitter" onMouseDown={startDrag} />
@@ -110,6 +112,7 @@ function App() {
                 setGraphData={setGraphData}
                 graphData={graphData}
                 onReset={handleReset}
+                setViewMode={setViewMode}
               />
             </div>
           </div>

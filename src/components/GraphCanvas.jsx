@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 
-export default function GraphCanvas({ graphData, pinAll }) {
+export default function GraphCanvas({ graphData, viewMode }) {
   const svgRef = useRef()
   useEffect(() => {
     const tooltip = d3.select('body')
@@ -19,7 +19,7 @@ export default function GraphCanvas({ graphData, pinAll }) {
   }, [])
 
   const lastTransform = useRef(d3.zoomIdentity)
-  const prevPin = useRef(pinAll)    
+
   useEffect(() => {
     const svg = d3.select(svgRef.current)
     svg.selectAll('*').remove()
@@ -40,6 +40,7 @@ export default function GraphCanvas({ graphData, pinAll }) {
 
     const width = svgRef.current?.clientWidth || 800
     const height = svgRef.current?.clientHeight || 500
+    const isBDD = viewMode === 'bdd';
 
     const nodes = graphData.nodes.map(n => ({
       ...n,
@@ -77,6 +78,15 @@ export default function GraphCanvas({ graphData, pinAll }) {
       if (n.fx === null) delete n.fx;
       if (n.fy === null) delete n.fy;
     });
+
+    // If BDD: do a simple layered layout and pin nodes (no forces).
+    if (isBDD) {
+      layoutBdd(nodes, links, width, height);    // function added below
+      nodes.forEach(n => {
+        n.fx = n.x; n.fy = n.y; n.isPinned = true;
+      });
+    }
+
     // Simulation
     const simulation = d3.forceSimulation(nodes)
       .force('charge', d3.forceManyBody().strength(-300))
@@ -86,6 +96,10 @@ export default function GraphCanvas({ graphData, pinAll }) {
       .force('y', d3.forceY(height / 2).strength(0.05))
       .alphaDecay(0.005)
       .velocityDecay(0.3)
+    
+    if(isBDD) {
+      simulation.stop();
+    }
 
 
     // Arrowheads definition
@@ -123,7 +137,7 @@ export default function GraphCanvas({ graphData, pinAll }) {
       .enter()
       .append('path')
         .attr('id', (d, i) => `linkPath-${i}`)
-        .attr('class', 'link')
+        .attr('class', isBDD ? 'link bdd' : 'link')
         .attr('stroke', '#000')
         .attr('stroke-width', 1)
         .attr('fill', 'none')
@@ -149,7 +163,10 @@ export default function GraphCanvas({ graphData, pinAll }) {
     // Nodes
     const BOX_W = 64;
     const BOX_H = 36;
-    const BOX_RX = 8;
+    const w = BOX_W / 2;         
+    const h = BOX_H;
+
+
     const nodeG = content.append('g')
     const node = nodeG.selectAll('g')
       .data(visibleNodes)
@@ -188,29 +205,15 @@ export default function GraphCanvas({ graphData, pinAll }) {
           .attr('fill', '#fff')
       } else if(d.shape === 'box') {
         g.append('rect')
-          .attr('x', -BOX_W / 2)
-          .attr('y', -BOX_H / 2)
-          .attr('width', BOX_W)
-          .attr('height', BOX_H)
-          .attr('rx', BOX_RX)
-          .attr('ry', BOX_RX)
+          .attr('x', -w / 2)
+          .attr('y', -h / 2)
+          .attr('width', w)
+          .attr('height', h)
+          .attr('rx', 0)
+          .attr('ry', 0)
           .attr('fill', '#fff')
           .attr('stroke', d.isPinned ? '#000' : '#444')
           .attr('stroke-width', d.isPinned ? 2 : 1);
-
-        // double-border for finals (slightly larger outline)
-        if (d.isFinal) {
-          g.append('rect')
-            .attr('x', -BOX_W / 2 - 4)
-            .attr('y', -BOX_H / 2 - 4)
-            .attr('width', BOX_W + 8)
-            .attr('height', BOX_H + 8)
-            .attr('rx', BOX_RX + 2)
-            .attr('ry', BOX_RX + 2)
-            .attr('fill', 'none')
-            .attr('stroke', '#000')
-            .attr('stroke-width', 1.5);
-        }
       } else {
         g.append('circle')
           .attr('r', 20)
@@ -234,11 +237,12 @@ export default function GraphCanvas({ graphData, pinAll }) {
       .attr('y', d => d.shape === 'image' ? -3 : 0)
       .attr('x', d => d.shape === 'image' ? 3 : 0)
       .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'middle')
       .attr('fill', '#000')
       .attr('stroke', '#fff')            // white outline
       .attr('stroke-width', 1)           // outline thickness
       .attr('paint-order', 'stroke') 
-      .text(d => d.id)
+      .text(d => d.label ?? d.id)
     
     node.selectAll('circle, rect')
       .attr('stroke', d => d.isPinned ? '#000' : '#444')
@@ -271,11 +275,15 @@ export default function GraphCanvas({ graphData, pinAll }) {
     function ticked() {
       linkPaths.attr('d', d => {
         if (!d.source || !d.target) return ''
-        if (d.source.id === d.target.id) {
+        if (!isBDD && d.source.id === d.target.id) {
           // Self-loop
           const x = d.source.x
           const y = d.source.y
           return `M${x},${y - loopR} A${loopR},${loopR} 0 1,1 ${x + 0.1},${y - loopR}`
+        }
+
+        if (isBDD) {
+          return `M${d.source.x},${d.source.y} L${d.target.x},${d.target.y}`;
         }
 
         const dx = d.target.x - d.source.x;
@@ -348,9 +356,128 @@ export default function GraphCanvas({ graphData, pinAll }) {
       content.attr('transform', transform)
     }
     
-  }, [graphData, pinAll])
+  }, [graphData, viewMode])
 
   return (
     <svg ref={svgRef} style={{ width: '100%', height: '100%', display: 'block' }}></svg>
   )
 }
+
+function layoutBdd(nodes, links, width, height) {
+  const PAD_L = 60, PAD_R = 60, PAD_T = 40, PAD_B = 40;
+  const V_GAP = 90;   // vertical gap between layers
+  const H_MIN = 80;   // minimum horizontal spacing
+
+  // --- Build adjacency with ids ---
+  const out = new Map(), inDeg = new Map();
+  nodes.forEach(n => { out.set(n.id, []); inDeg.set(n.id, 0); });
+  links.forEach(e => {
+    const s = typeof e.source === 'object' ? e.source.id : e.source;
+    const t = typeof e.target === 'object' ? e.target.id : e.target;
+    if (!out.has(s)) out.set(s, []);
+    out.get(s).push(t);
+    inDeg.set(t, (inDeg.get(t) || 0) + 1);
+  });
+
+  // --- Prefer explicit var/level if provided ---
+  const level = new Map();
+  const parseLvl = v => {
+    if (v === null || v === undefined) return null;
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string') {
+      const m = v.match(/(\d+)/);
+      if (m) return +m[1];
+    }
+    return null;
+  };
+  let anyExplicit = false;
+  for (const n of nodes) {
+    const lvl = parseLvl(n.var ?? n.level);
+    if (lvl !== null) { level.set(n.id, lvl); anyExplicit = true; }
+  }
+
+  // --- If no explicit levels, compute longest-path layering from sources ---
+  if (!anyExplicit) {
+    const L = new Map(nodes.map(n => [n.id, 0]));
+    const indegCopy = new Map(inDeg);
+    const q = [];
+
+    nodes.forEach(n => { if ((indegCopy.get(n.id) || 0) === 0) q.push(n.id); });
+    if (q.length === 0 && nodes.length) q.push(nodes[0].id); // degenerate fallback
+
+    while (q.length) {
+      const u = q.shift();
+      for (const v of (out.get(u) || [])) {
+        L.set(v, Math.max(L.get(v), L.get(u) + 1));
+        indegCopy.set(v, (indegCopy.get(v) || 0) - 1);
+        if (indegCopy.get(v) === 0) q.push(v);
+      }
+    }
+    L.forEach((val, k) => level.set(k, val));
+  }
+
+  // --- Terminals go to bottom layer + 1 ---
+  let maxLvl = -Infinity;
+  level.forEach(v => { if (v > maxLvl) maxLvl = v; });
+  for (const n of nodes) {
+    if ((out.get(n.id) || []).length === 0) level.set(n.id, maxLvl + 1);
+  }
+  maxLvl = -Infinity; level.forEach(v => { if (v > maxLvl) maxLvl = v; });
+
+  // --- If still one layer, use a tidy grid to avoid the snake ---
+  const unique = new Set(level.values());
+  if (unique.size <= 1) {
+    const cols = Math.ceil(Math.sqrt(nodes.length));
+    const rows = Math.ceil(nodes.length / cols);
+    const cellW = (width  - PAD_L - PAD_R) / cols;
+    const cellH = (height - PAD_T - PAD_B) / Math.max(1, rows);
+    nodes.forEach((n, i) => {
+      const c = i % cols, r = Math.floor(i / cols);
+      n.x = PAD_L + cellW * (c + 0.5);
+      n.y = PAD_T + cellH * (r + 0.5);
+    });
+    return;
+  }
+
+  // --- Group by level ---
+  const byLevel = new Map();
+  nodes.forEach(n => {
+    const lv = level.get(n.id) ?? 0;
+    if (!byLevel.has(lv)) byLevel.set(lv, []);
+    byLevel.get(lv).push(n);
+  });
+
+  // --- Parents map for barycenter heuristic ---
+  const parents = new Map();
+  links.forEach(e => {
+    const s = typeof e.source === 'object' ? e.source.id : e.source;
+    const t = typeof e.target === 'object' ? e.target.id : e.target;
+    if (!parents.has(t)) parents.set(t, new Set());
+    parents.get(t).add(s);
+  });
+
+  const layers = Array.from(byLevel.keys()).sort((a,b) => a - b);
+  const yMin = PAD_T, yMax = height - PAD_B;
+  const layerGap = Math.min(V_GAP, (yMax - yMin) / Math.max(1, layers.length));
+
+  let prevX = new Map(); // nodeId -> x
+  layers.forEach((lv, idx) => {
+    const row = byLevel.get(lv);
+    // barycenter ordering
+    const scored = row.map(n => {
+      const ps = Array.from(parents.get(n.id) || []);
+      const score = ps.length ? ps.reduce((s,p) => s + (prevX.get(p) ?? 0), 0) / ps.length : 0;
+      return { n, score };
+    }).sort((a,b) => a.score - b.score);
+
+    const y = yMin + idx * layerGap;
+    const span = Math.max(1, scored.length);
+    const xStep = Math.max(H_MIN, (width - PAD_L - PAD_R) / (span + 1));
+    scored.forEach((e, i) => {
+      const x = PAD_L + xStep * (i + 1);
+      e.n.x = x; e.n.y = y;
+      prevX.set(e.n.id, x);
+    });
+  });
+}
+

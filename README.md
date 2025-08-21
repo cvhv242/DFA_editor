@@ -2,11 +2,6 @@
 
 An interactive, terminal-driven tool to define, visualize, and manipulate Deterministic Finite Automata (DFA) — with optional Binary Decision Diagram (BDD) views.
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
 ## Features
 
 - Terminal-first UX — create states, transitions, and run queries like a shell.

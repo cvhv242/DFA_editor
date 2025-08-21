@@ -1,3 +1,5 @@
+import initialIcon from '../assets/download.png'
+
 export function buildProduct(A, B, op) {
   // 1) alphabet – assume every link label already split by commas
   const ΣA = new Set(A.links.flatMap(l => l.label.split(',').map(s=>s.trim())));
@@ -47,7 +49,7 @@ export function buildProduct(A, B, op) {
   const first = Q.get(`${q0A}|${q0B}`);
   first.isInitial = true;
   first.shape     = 'image';
-  first.imageUrl  = '/download.png';
+  first.imageUrl  = initialIcon;
 
   return { nodes:[...Q.values()], links };
 }

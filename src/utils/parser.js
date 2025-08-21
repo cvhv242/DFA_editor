@@ -28,7 +28,9 @@
  * $showbdd: Shows the BDD of the current DFA (in progress)
  * $accept word: returns 'accepted' if 'word' is accepted by the DFA and 'rejected' if not. 
 */
-export function parseInput(raw, prev = { nodes: [], links: [], complementCount: 0}) {
+import initialIcon from '../assets/download.png'
+
+export function parseInput(raw, prev = { nodes: [], links: [] }) {
 
   const lines = raw.trim().split('\n').map(l => l.trim()).filter(Boolean);
 
@@ -75,7 +77,7 @@ export function parseInput(raw, prev = { nodes: [], links: [], complementCount: 
               createdNodes.set(id, {
                 id,
                 shape: isInitial ? 'image' : 'circle',
-                imageUrl: isInitial ? '/public/download.png' : null,
+                imageUrl: isInitial ? initialIcon : null,
                 isInitial,
                 isFinal: false
               });
@@ -421,7 +423,7 @@ export function parseInput(raw, prev = { nodes: [], links: [], complementCount: 
     if (n.id === initialState && !deletedAt.has(n.id)) {
       n.isInitial = true;
       n.shape     = 'image';
-      n.imageUrl  = '/download.png';
+      n.imageUrl  = initialIcon;
     } else {
       n.isInitial = false;
       n.shape     = 'circle';

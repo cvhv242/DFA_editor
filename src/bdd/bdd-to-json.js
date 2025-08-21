@@ -9,8 +9,10 @@ import BDD from "./BDD.js";
 export default function bddToJson(root, mgr) {
   const lvlGap = 120, colGap = 90;        // visual spacing only
   const byVar  = new Map();               // var → all node ids on that var
+  const seen   = new Set();
   const walk = (id) => {
-    if (id <= 1 || byVar.has(id)) return;
+    if (id <= 1 || seen.has(id)) return;
+    seen.add(id);
     const { var:v, lo, hi } = mgr.nodes[id];
     if (!byVar.has(v)) byVar.set(v, []);
     byVar.get(v).push(id);
