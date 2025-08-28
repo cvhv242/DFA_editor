@@ -8,6 +8,20 @@ import { buildProduct }    from '../utils/product.js'
 import bddToJson           from '../bdd/bdd-to-json.js'
 import buildRelBDD         from '../bdd/dfa2bdd-rel.js'
 
+const TERM_SINGLETON = (window.__TERM_SINGLETON__ ||= {
+  term: null,
+  fit: null,
+  keySub: null,          // disposable for onKey
+  didInitPrompt: false,  // so we don't double-print the first prompt
+  rawLines: [],
+  history: [],
+  mode: 'dfa',           // 'dfa' | 'bdd'
+  prevDfa: null,         // snapshot before entering BDD
+  undoStack: [],
+  dfaLeft: null,
+  dfaRight: null,
+});
+
 export default function TerminalInput({ graphData, setGraphData, onReset, setViewMode }) {
   const termRef       = useRef(null)
   const terminal      = useRef(null)
@@ -26,23 +40,35 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
   const modeRef       = useRef('dfa')
 
   useEffect(() => { dataRef.current = graphData }, [graphData])
-
+   // Create once, then reattach on every mount
   useEffect(() => {
-    terminal.current = new Terminal({
-      cursorBlink: true,
-      rows: 10,
-      scrollback: 2000,
-      theme: { background: '#1e1e1e', foreground: '#ffffff' },
-    })
-    fitAddon.current = new FitAddon()
-    terminal.current.loadAddon(fitAddon.current)
-    terminal.current.open(termRef.current)
-    fitAddon.current.fit()
-    terminal.current.focus()
+    if (!TERM_SINGLETON.term) {
+      TERM_SINGLETON.term = new Terminal({
+        cursorBlink: true, rows: 10, scrollback: 2000,
+        theme: { background: '#1e1e1e', foreground: '#ffffff' },
+      });
+      TERM_SINGLETON.fit = new FitAddon();
+      TERM_SINGLETON.term.loadAddon(TERM_SINGLETON.fit);
+    }
+    terminal.current = TERM_SINGLETON.term;
+    fitAddon.current = TERM_SINGLETON.fit;
+    // Reattach to the new DOM container
+    if (termRef.current) {
+      termRef.current.innerHTML = '';
+      terminal.current.open(termRef.current);
+      try { fitAddon.current.fit(); } catch {}
+      terminal.current.focus();
+    }
+    // Seed persistent refs from the singleton
+    rawLines.current   = TERM_SINGLETON.rawLines;
+    prevDfaRef.current = TERM_SINGLETON.prevDfa;
+    undoStack.current  = TERM_SINGLETON.undoStack;
+    modeRef.current    = TERM_SINGLETON.mode || 'dfa';
+    if (!TERM_SINGLETON.didInitPrompt) { writePrompt(); TERM_SINGLETON.didInitPrompt = true; }
 
-    writePrompt()
-
-    terminal.current.onKey(({ key, domEvent }) => {
+    // Bind exactly one key handler; dispose previous if any
+    try { TERM_SINGLETON.keySub?.dispose(); } catch {}
+    TERM_SINGLETON.keySub = terminal.current.onKey(({ key, domEvent }) => {
       if (awaitingReset.current) return
       const t = terminal.current
       const printable = !domEvent.altKey && !domEvent.ctrlKey && !domEvent.metaKey
@@ -97,10 +123,15 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
               if (key.toLowerCase() === 'y') {
                 onReset()
                 rawLines.current = []
+                TERM_SINGLETON.rawLines = []
                 buffer.current = ''
                 history.current = []
                 modeRef.current = 'dfa'
+                TERM_SINGLETON.mode = 'dfa'
                 prevDfaRef.current= null
+                undoStack.current = []
+                TERM_SINGLETON.prevDfa = null
+                TERM_SINGLETON.undoStack = []
                 setViewMode?.('dfa');
                 terminal.current.clear()
               } else {
@@ -123,7 +154,9 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
             if (prevDfaRef.current) {
               setGraphData(prevDfaRef.current);
               prevDfaRef.current = null;
+              TERM_SINGLETON.prevDfa = null;
               modeRef.current = 'dfa';
+              TERM_SINGLETON.mode = 'dfa'
               setViewMode?.('dfa');
               terminal.current.writeln('\x1b[35mReturned to DFA view.\x1b[0m');
               writePrompt();
@@ -143,6 +176,8 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
               const prev = undoStack.current.pop()
               setGraphData(prev)
               rawLines.current = toScript(prev)
+              TERM_SINGLETON.rawLines = rawLines.current
+              TERM_SINGLETON.undoStack = undoStack.current
               try {
                 const script = rawLines.current.join('\n')
                 const { reminders = [], errors = [] } = parseInput(script, prev)
@@ -272,16 +307,21 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
                   if (slot === 'right') dfaRight.current = { nodes: normalizedNodes, links: linksIn }
 
                   rawLines.current = toScript({nodes: normalizedNodes, links: linksIn})
+                  TERM_SINGLETON.rawLines = rawLines.current
 
                   modeRef.current = 'dfa';
+                  TERM_SINGLETON.mode = 'dfa';
                   prevDfaRef.current = null
+                  TERM_SINGLETON.prevDfa = null
                   setViewMode?.('dfa');
                   t.writeln(`\x1b[33mDFA loaded from "${file.name}"\x1b[0m`)
                 } else {
                   // assume generic graph (possibly BDD); keep as-is and switch to BDD mode
                   setGraphData({ nodes: nodesIn, links: linksIn })
                   modeRef.current = 'bdd'
+                  TERM_SINGLETON.mode = 'bdd'
                   prevDfaRef.current = null
+                  TERM_SINGLETON.prevDfa = null
                   setViewMode?.('bdd');
                   t.writeln(`\x1b[33mGraph (BDD/Generic) loaded from "${file.name}"\x1b[0m`)
                 }
@@ -305,9 +345,11 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
             const product = buildProduct(dfaLeft.current, dfaRight.current, op)
             setGraphData(product)
             modeRef.current = 'dfa'
+            TERM_SINGLETON.mode = 'dfa'
             history.current.push({ type:'command', text:`$ ${command}`})
 
             rawLines.current = toScript(product)
+            TERM_SINGLETON.rawLines = rawLines.current
 
             writePrompt()
             return
@@ -351,10 +393,12 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
           case 'showbdd': {
             const dfa = dataRef.current
             prevDfaRef.current = JSON.parse(JSON.stringify(dataRef.current));
+            TERM_SINGLETON.prevDfa = prevDfaRef.current;
             const { T, mgr, _ } = buildRelBDD(dfa)
             const { nodes, links } = bddToJson(T, mgr)
             setGraphData({ nodes, links })
             modeRef.current = 'bdd'
+            TERM_SINGLETON.mode = 'bdd'
             history.current.push({ type:'command', text:'$ showbdd' })
             terminal.current.writeln(`\x1b[35mEntered BDD view (read-only). Type 'back' to return to DFA.\x1b[0m`)
             modeRef.current='bdd'
@@ -388,6 +432,7 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
             if (part === 's' || part === 'all') terminal.current.writeln(colorMono('S(x′) = ' + mono.S));
 
             modeRef.current='bdd'
+            TERM_SINGLETON.mode = 'bdd'
             setViewMode?.('bdd');
             writePrompt();
             return;
@@ -430,6 +475,7 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
             } else {
               const prevSnap = JSON.parse(JSON.stringify(dataRef.current));
               undoStack.current.push(prevSnap);
+              TERM_SINGLETON.undoStack = undoStack.current;
               history.current.push({ type: 'command', text: `$ ${line}` })
               setGraphData(prev => {
                 const oldById = new Map(prev.nodes.map(n => [n.id, n]))
@@ -440,8 +486,10 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
                 return { nodes: mergedNodes, links }
               })
               rawLines.current = toScript({ nodes, links });
+              TERM_SINGLETON.rawLines = rawLines.current;
               reminders.forEach(r => t.write(`\x1b[33m${r}\x1b[0m\r\n`))
               modeRef.current = 'dfa'
+              TERM_SINGLETON.rawLines = rawLines.current;
             }
             writePrompt()
           }
@@ -459,8 +507,14 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
       }
     })
 
-    window.addEventListener('resize', () => fitAddon.current.fit())
-    return () => terminal.current.dispose()
+    const onResize = () => { try { fitAddon.current.fit(); } catch {} };
+    window.addEventListener('resize', onResize);
+    // IMPORTANT: do not dispose the terminal; keep buffer alive
+    return () => {
+      try { TERM_SINGLETON.keySub?.dispose(); } catch {}
+      TERM_SINGLETON.keySub = null;
+      window.removeEventListener('resize', onResize);
+    }
   }, [setGraphData])
 
   return (
