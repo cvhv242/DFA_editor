@@ -130,36 +130,26 @@ export function parseInput(raw, prev = { nodes: [], links: [] }) {
         return;
       }
       case 'initial': {
-        if (parts.length !== 2) {
-          errors.push(`Invalid syntax; expected "initial NEW_INITIAL_STATE"`);
-        } else {
-          const newInitial = parts[1];
-          if (deletedAt.has(newInitial)) {
-            errors.push(`Cannot set "${newInitial}" as initial — node was deleted`);
-          } else {
+        const newInitial = parts[1]?.trim();
+        if (!newInitial) { errors.push('Invalid syntax; expected "initial S"'); return; }
+        if (deletedAt.has(newInitial)) { errors.push(`Cannot set "${newInitial}" as initial — node was deleted`); return; }
 
-            const existingNode = createdNodes.get(newInitial) || prev.nodes.find(n => n.id === newInitial);
-
-            if(!existingNode) {
-              errors.push(`State "${newInitial}" does not exist`);
-              return;
-            }
-
-            if (existingNode?.isFinal) {
-              errors.push(`Cannot set final "${newInitial}" as initial`);
-              return;
-            }
-            prev.nodes.forEach(n => {
-              if (n.isInitial && n.id !== newInitial) {
-                createdNodes.set(n.id, { ...n, isInitial: false })
-              }
-            })
-            
-            initialState = newInitial;
-          }
+        let n = createdNodes.get(newInitial) || prev.nodes.find(x => x.id === newInitial);
+        if (!n) {
+          n = { id: newInitial, isInitial: false, isFinal: false, shape: 'circle', imageUrl: null };
+          createdNodes.set(newInitial, n);
         }
+
+        if (n.isFinal) { errors.push(`Cannot set final "${newInitial}" as initial`); return; }
+
+        // unmark any previous initial (prev + staged)
+        prev.nodes.forEach(x => { if (x.isInitial && x.id !== newInitial) createdNodes.set(x.id, { ...x, isInitial: false }); });
+        createdNodes.forEach((x, id) => { if (x.isInitial && id !== newInitial) createdNodes.set(id, { ...x, isInitial: false }); });
+
+        initialState = newInitial;
         return;
       }
+
       case 'final': {
         if (!args) {
           errors.push('Usage: final <id>[,<id>…]');
@@ -322,7 +312,7 @@ export function parseInput(raw, prev = { nodes: [], links: [] }) {
 
     const [rawSource, target, labelsString] = line.split(/\s+/) || [];
     if (!rawSource || !target || !labelsString) {
-      errors.push(`Input must be "from_state to_state label1,label2,..."`);
+      errors.push(`Command not found: Use '$manual' or '$help' or '$?' to see the list of commands`);
       return;
     }
 
@@ -357,7 +347,7 @@ export function parseInput(raw, prev = { nodes: [], links: [] }) {
     const seen = new Set();
     labels.forEach(lab => {
       if (seen.has(lab)) {
-        errors.push(`Line ${idx + 1}: duplicate label "${lab}" in transition from "${source}" to "${target}"`);
+        errors.push(`Duplicate label "${lab}" in transition from "${source}" to "${target}"`);
         return;
       }
       seen.add(lab);

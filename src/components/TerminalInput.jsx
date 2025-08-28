@@ -21,6 +21,8 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
   const history       = useRef([])
   const awaitingReset = useRef(false)
   const dataRef       = useRef(graphData)
+  const prevDfaRef    = useRef(null)
+  const undoStack     = useRef([]);
   const modeRef       = useRef('dfa')
 
   useEffect(() => { dataRef.current = graphData }, [graphData])
@@ -98,6 +100,7 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
                 buffer.current = ''
                 history.current = []
                 modeRef.current = 'dfa'
+                prevDfaRef.current= null
                 setViewMode?.('dfa');
                 terminal.current.clear()
               } else {
@@ -117,27 +120,38 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
           }
 
           case 'back': {
-            // leave BDD view and restore DFA from rawLines
-            switchToDFA()
+            if (prevDfaRef.current) {
+              setGraphData(prevDfaRef.current);
+              prevDfaRef.current = null;
+              modeRef.current = 'dfa';
+              setViewMode?.('dfa');
+              terminal.current.writeln('\x1b[35mReturned to DFA view.\x1b[0m');
+              writePrompt();
+              return;
+            }
+            switchToDFA(); // fallback
             modeRef.current='dfa';
             setViewMode?.('dfa');
-            return
+            return;
           }
 
           case 'undo': {
             if (modeRef.current === 'bdd') return cannotEditBDD()
-            if (rawLines.current.length === 0) {
-              t.write('\x1b[33mNothing to undo\x1b[0m\r\n')
+            if(undoStack.current.length === 0) {
+              t.writeln('\x1b[33mNothing to undo\x1b[0m')
             } else {
-              rawLines.current.pop()
-              const script = rawLines.current.join('\n')
-              const { nodes, links, errors } = parseInput(script)
-              if (errors.length) {
-                errors.forEach(e => t.write(`\x1b[31m${e}\x1b[0m\r\n`))
-              } else {
-                setGraphData({ nodes, links })
-                history.current.push({ type: 'command', text: `$ undo` })
+              const prev = undoStack.current.pop()
+              setGraphData(prev)
+              rawLines.current = toScript(prev)
+              try {
+                const script = rawLines.current.join('\n')
+                const { reminders = [], errors = [] } = parseInput(script, prev)
+                errors.forEach(e => t.writeln(`\x1b[31m${e}\x1b[0m`))
+                reminders.forEach(r => t.writeln(`\x1b[33m${r}\x1b[0m`))
+              } catch (e) {
+                t.writeln(`\x1b[31mUndo check failed: ${e.message}\x1b[0m`)
               }
+              history.current.push({ type: 'command', text: `$ undo` });
             }
             writePrompt()
             return
@@ -186,7 +200,11 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
             } else {
               links.forEach(l => {
                 const labels = (l.label || '').split(',').map(s => s.trim()).filter(Boolean)
-                labels.forEach(lab => t.writeln(`\x1b[33mδ(${l.source}, ${lab}) → ${l.target}\x1b[0m`))
+                labels.forEach(lab => {
+                  const from = typeof l.source === 'string' ? l.source : l.source.id
+                  const to   = typeof l.target === 'string' ? l.target : l.target.id
+                  t.writeln(`\x1b[33mδ(${from}, ${lab}) → ${to}\x1b[0m`)
+                })
               })
             }
             writePrompt()
@@ -253,20 +271,17 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
                   if (slot === 'left')  dfaLeft.current  = { nodes: normalizedNodes, links: linksIn }
                   if (slot === 'right') dfaRight.current = { nodes: normalizedNodes, links: linksIn }
 
-                  const initial = normalizedNodes.find(n => n.isInitial)
-                  const regular = normalizedNodes.filter(n => !n.isInitial)
-                  rawLines.current = [
-                    `cnode ${initial ? '>' + initial.id : ''}${regular.length ? ',' + regular.map(n => n.id).join(',') : ''}`,
-                    ...normalizedNodes.filter(n => n.isFinal).map(n => `final ${n.id}`),
-                    ...linksIn.flatMap(l => (l.label || '').split(',').filter(Boolean).map(lbl => `${l.source} ${l.target} ${lbl.trim()}`))
-                  ]
+                  rawLines.current = toScript({nodes: normalizedNodes, links: linksIn})
+
                   modeRef.current = 'dfa';
+                  prevDfaRef.current = null
                   setViewMode?.('dfa');
                   t.writeln(`\x1b[33mDFA loaded from "${file.name}"\x1b[0m`)
                 } else {
                   // assume generic graph (possibly BDD); keep as-is and switch to BDD mode
                   setGraphData({ nodes: nodesIn, links: linksIn })
                   modeRef.current = 'bdd'
+                  prevDfaRef.current = null
                   setViewMode?.('bdd');
                   t.writeln(`\x1b[33mGraph (BDD/Generic) loaded from "${file.name}"\x1b[0m`)
                 }
@@ -292,14 +307,7 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
             modeRef.current = 'dfa'
             history.current.push({ type:'command', text:`$ ${command}`})
 
-            // NEW: rebuild script from the product so later features see it
-            const initial = product.nodes.find(n => n.isInitial)
-            const regular = product.nodes.filter(n => !n.isInitial)
-            rawLines.current = [
-              `cnode ${initial ? '>' + initial.id : ''}${regular.length ? ',' + regular.map(n => n.id).join(',') : ''}`,
-              ...product.nodes.filter(n => n.isFinal).map(n => `final ${n.id}`),
-              ...product.links.flatMap(l => (l.label || '').split(',').filter(Boolean).map(lbl => `${l.source} ${l.target} ${lbl.trim()}`))
-            ]
+            rawLines.current = toScript(product)
 
             writePrompt()
             return
@@ -342,6 +350,7 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
 
           case 'showbdd': {
             const dfa = dataRef.current
+            prevDfaRef.current = JSON.parse(JSON.stringify(dataRef.current));
             const { T, mgr, _ } = buildRelBDD(dfa)
             const { nodes, links } = bddToJson(T, mgr)
             setGraphData({ nodes, links })
@@ -419,7 +428,8 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
               errors.forEach(err => t.write(`\x1b[31m${err}\x1b[0m\r\n`))
               history.current.push(...errors.map(e => ({ type: 'error', text: e })))
             } else {
-              rawLines.current.push(line)
+              const prevSnap = JSON.parse(JSON.stringify(dataRef.current));
+              undoStack.current.push(prevSnap);
               history.current.push({ type: 'command', text: `$ ${line}` })
               setGraphData(prev => {
                 const oldById = new Map(prev.nodes.map(n => [n.id, n]))
@@ -429,6 +439,7 @@ export default function TerminalInput({ graphData, setGraphData, onReset, setVie
                 })
                 return { nodes: mergedNodes, links }
               })
+              rawLines.current = toScript({ nodes, links });
               reminders.forEach(r => t.write(`\x1b[33m${r}\x1b[0m\r\n`))
               modeRef.current = 'dfa'
             }
@@ -582,3 +593,28 @@ function buildMonolithic(snap, enc) {
 
 // Cyan output color for formulas
 function colorMono(s) { return `\x1b[36m${s}\x1b[0m`; }
+
+function toScript(graph) {
+  const nodes = graph.nodes ?? [];
+  const links = graph.links ?? [];
+  const initial = nodes.find(n => n.isInitial)?.id || '';
+  const regular = nodes.filter(n => !n.isInitial).map(n => n.id);
+  const lines = [];
+
+  // cnode line (initial first, then others)
+  const cnodeArgs = [initial ? '>' + initial : null, ...regular].filter(Boolean).join(',');
+  if (cnodeArgs) lines.push(`cnode ${cnodeArgs}`);
+
+  // finals (don’t mark the initial as final to avoid parser conflict)
+  nodes.filter(n => n.isFinal && !n.isInitial).forEach(n => lines.push(`final ${n.id}`));
+
+  // transitions, one label per line
+  links.forEach(l => {
+    const from = typeof l.source === 'string' ? l.source : l.source.id;
+    const to   = typeof l.target === 'string' ? l.target : l.target.id;
+    (l.label || '').split(',').map(s => s.trim()).filter(Boolean)
+      .forEach(lbl => lines.push(`${from} ${to} ${lbl}`));
+  });
+
+  return lines;
+}

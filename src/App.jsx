@@ -103,7 +103,7 @@ function App() {
             <div
               className="panel-header"
               onMouseDown={startDrag}
-              title="Drag to resize • Double-click to maximize/restore • Ctrl/Cmd+J to toggle"
+              title="Drag to resize"
             >
               <div className="panel-title">Input Terminal</div>
             </div>
